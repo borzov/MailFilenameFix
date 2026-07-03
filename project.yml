@@ -13,6 +13,9 @@ targets:
     type: application
     platform: macOS
     sources: [App]
+    settings:
+      base:
+        PRODUCT_NAME: Mail Filename Fix
     info:
       path: App/Info.plist
       properties:
@@ -20,6 +23,7 @@ targets:
         CFBundleShortVersionString: 1.0.0
         CFBundleIconFile: AppIcon
         LSApplicationCategoryType: public.app-category.utilities
+        LSUIElement: true
         NSHumanReadableCopyright: © 2026 Maxim Borzov. MIT License.
     entitlements:
       path: App/App.entitlements

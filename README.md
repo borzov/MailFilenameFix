@@ -45,7 +45,7 @@ xcodebuild -project MailFilenameFix.xcodeproj -scheme MailFilenameFix \
     -configuration Release build
 ```
 
-Copy the built `MailFilenameFix.app` to `/Applications`, launch it once,
+Copy the built `Mail Filename Fix.app` to `/Applications`, launch it once,
 then enable the extension in **Mail → Settings → Extensions** and restart
 Mail.
 
