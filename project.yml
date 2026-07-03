@@ -1,0 +1,54 @@
+name: MailFilenameFix
+options:
+  bundleIdPrefix: com.borzov
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: 4C524G83X7
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+targets:
+  MailFilenameFix:
+    type: application
+    platform: macOS
+    sources: [App]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Mail Filename Fix
+        CFBundleShortVersionString: 1.0.0
+        CFBundleIconFile: AppIcon
+        LSApplicationCategoryType: public.app-category.utilities
+        NSHumanReadableCopyright: © 2026 Maxim Borzov. MIT License.
+    entitlements:
+      path: App/App.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    dependencies:
+      - target: FilenameFixExtension
+        embed: true
+  FilenameFixExtension:
+    type: app-extension
+    platform: macOS
+    sources: [Extension]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borzov.MailFilenameFix.FilenameFixExtension
+    info:
+      path: Extension/Info.plist
+      properties:
+        CFBundleDisplayName: Filename Fix
+        CFBundleShortVersionString: 1.0.0
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.email.extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MailExtension
+          NSExtensionAttributes:
+            MEExtensionCapabilities:
+              - MEMessageSecurityHandler
+    entitlements:
+      path: Extension/Extension.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    dependencies:
+      - sdk: MailKit.framework
