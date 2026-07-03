@@ -1,4 +1,5 @@
 MailFilenameFix.xcodeproj/
 DerivedData/
+dist/
 *.icns.iconset/
 .DS_Store
