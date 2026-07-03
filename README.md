@@ -1,43 +1,63 @@
-# MailFilenameFix
+# Mail Filename Fix
 
-A Mail.app extension for macOS that fixes garbled attachment filenames like:
+Расширение для Почты (Mail.app) на macOS, которое чинит искажённые имена
+вложений:
 
 ```
 utf-8''%D0%93%D1%80%D0%B0%D1%84%D0%B8%D0%BA%D0%B0-2.png   →   Графика-2.png
 ```
 
-## The problem
+## В чём проблема
 
-Apple Mail on macOS (unlike iOS Mail and every webmail) does not decode
-RFC 2231/5987 extended parameters (`filename*=utf-8''%...`) in
-`Content-Disposition` / `Content-Type` headers. Attachments with non-ASCII
-(e.g. Cyrillic) names sent by servers that use this — perfectly valid —
-encoding show up as raw percent-encoded garbage. Long names can't even be
-saved to disk because the encoded form exceeds the 255-byte filename limit.
-The bug has been reported since macOS 11 and is still present in macOS 26.
+Если файл в письме называется по-русски (или на любом другом языке, кроме
+английского), Почта на Mac часто показывает вместо имени бессмысленный набор
+символов вида `utf-8''%D0%93...`. Такие файлы неудобно искать, а с очень
+длинными именами — даже не получается сохранить на диск.
 
-## How it works
+Это давняя ошибка самой Почты: отправитель кодирует имя файла по стандарту
+(RFC 2231), а Почта на macOS — единственная из всех почтовых программ — не
+умеет его раскодировать. На iPhone и в веб-почте те же письма выглядят
+нормально. Ошибка живёт со времён macOS 11 и не исправлена до сих пор
+(включая macOS 26).
 
-MailKit (the only extension API left since macOS Sonoma removed legacy
-plug-ins) offers no direct hook for attachment names. This project uses the
-**Message Security Extension** entry point instead: Mail hands the raw RFC822
-message to `decodedMessage(forMessageData:)`, and the extension returns a copy
-where extended `filename*=` / `name*=` parameters are rewritten into the
-RFC 2047 encoded-word form (`filename="=?utf-8?B?...?="`) that Mail renders
-correctly — the same form Gmail and Outlook produce.
+## Как это работает
 
-- Display-time only: messages on the IMAP server are never modified.
-- Byte-surgical: only affected header lines change.
-- Any source charset (utf-8, windows-1251, koi8-r, … via IANA lookup),
-  `filename*0*`/`filename*1*` continuations supported.
-- Cryptographically signed messages (`multipart/signed`) are left untouched.
-- Messages that need no fix are passed through with a fast `nil` return.
+Расширение встраивается в Почту штатным способом (через MailKit) и на лету
+переписывает «непонятную» для Почты кодировку имени в ту, которую она
+понимает (так кодируют Gmail и Outlook). После этого имя отображается
+правильно везде: в списке вложений, при быстром просмотре и при сохранении.
 
-## Build
+При этом:
 
-Requires Xcode and [xcodegen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`). Set your own development team in `project.yml`,
-then:
+- письма на сервере не изменяются — исправление происходит только при
+  отображении, на вашем Mac;
+- в письме меняются только строки с именем файла, всё остальное остаётся
+  байт в байт как было;
+- поддерживаются любые кодировки (utf-8, windows-1251, koi8-r, …) и имена,
+  разбитые на несколько строк;
+- письма с цифровой подписью не затрагиваются;
+- обычные письма расширение пропускает мгновенно, не замедляя Почту.
+
+Расширение не требует запущенных фоновых программ: Почта сама запускает его
+при чтении письма и сама останавливает. Приложение-контейнер просто лежит в
+«Программах».
+
+## Установка
+
+1. Соберите приложение (см. ниже) или возьмите готовое.
+2. Положите «Mail Filename Fix.app» в папку «Программы» и откройте один раз.
+3. Включите расширение: **Почта → Настройки → Расширения → Filename Fix**.
+4. Перезапустите Почту.
+
+Уже полученные письма Почта могла запомнить в старом виде — они исправятся
+после переоткрытия письма или пересинхронизации ящика. Новые письма
+исправляются сразу.
+
+## Сборка из исходников
+
+Нужны Xcode и [xcodegen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). Укажите свою команду разработчика
+(`DEVELOPMENT_TEAM`) в `project.yml`, затем:
 
 ```sh
 xcodegen generate
@@ -45,20 +65,18 @@ xcodebuild -project MailFilenameFix.xcodeproj -scheme MailFilenameFix \
     -configuration Release build
 ```
 
-Copy the built `Mail Filename Fix.app` to `/Applications`, launch it once,
-then enable the extension in **Mail → Settings → Extensions** and restart
-Mail.
+Готовое приложение появится в DerivedData; скопируйте его в «Программы».
 
-## Tests
+## Тесты
 
-The header-rewriting core (`Extension/FilenameFixer.swift`) has a standalone
-test suite:
+Ядро, переписывающее заголовки (`Extension/FilenameFixer.swift`), покрыто
+автономными тестами:
 
 ```sh
 swiftc -o /tmp/fixer_test Extension/FilenameFixer.swift tests/main.swift
 /tmp/fixer_test
 ```
 
-## License
+## Лицензия
 
 MIT
