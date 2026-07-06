@@ -38,13 +38,15 @@ DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/MailFilenameFix-${
 info "Скачиваю: $DOWNLOAD_URL"
 curl -fSL --progress-bar -o "$TMP/app.zip" "$DOWNLOAD_URL"
 ditto -xk "$TMP/app.zip" "$TMP/unpacked"
-[[ -d "$TMP/unpacked/$APP_NAME" ]] || die "в архиве не оказалось «$APP_NAME»."
+# NB: ${VAR} braces are mandatory next to non-ASCII text — /bin/bash 3.2
+# swallows multibyte characters into the variable name otherwise.
+[[ -d "$TMP/unpacked/$APP_NAME" ]] || die "в архиве не оказалось «${APP_NAME}»."
 
 # Quit a running instance before replacing it (the app is a background agent,
 # so it is usually not running at all).
 osascript -e "quit app \"${APP_NAME%.app}\"" >/dev/null 2>&1 || true
 
-info "Устанавливаю в $DEST…"
+info "Устанавливаю в ${DEST}…"
 SUDO=""
 if ! { rm -rf "$DEST/$APP_NAME" && ditto "$TMP/unpacked/$APP_NAME" "$DEST/$APP_NAME"; } 2>/dev/null; then
     info "Нужны права администратора (пароль вашего пользователя macOS)."
