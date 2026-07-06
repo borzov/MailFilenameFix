@@ -98,9 +98,19 @@ xcodebuild -project MailFilenameFix.xcodeproj -scheme MailFilenameFix \
 автономными тестами:
 
 ```sh
-swiftc -o /tmp/fixer_test Extension/FilenameFixer.swift tests/main.swift
-/tmp/fixer_test
+scripts/test.sh
 ```
+
+## Выпуск новой версии
+
+```sh
+scripts/release.sh 1.2.3
+```
+
+Скрипт поднимет версию, прогонит тесты, соберёт приложение, упакует его в
+`dist/` и обновит Homebrew cask (версию и sha256). Команды публикации
+(git push, релиз на GitHub) он напечатает в конце — их нужно выполнить
+вручную.
 
 ## Лицензия
 

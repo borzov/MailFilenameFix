@@ -12,7 +12,6 @@ set -euo pipefail
 
 REPO="borzov/MailFilenameFix"
 APP_NAME="Mail Filename Fix.app"
-APPEX_PATH="Contents/PlugIns/FilenameFixExtension.appex"
 DEST="/Applications"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -47,27 +46,10 @@ if ! { rm -rf "$DEST/$APP_NAME" && ditto "$TMP/unpacked/$APP_NAME" "$DEST/$APP_N
 fi
 
 info "Снимаю карантин и переподписываю локально…"
-$SUDO xattr -dr com.apple.quarantine "$DEST/$APP_NAME" 2>/dev/null || true
-
-# Mail requires its extensions to be sandboxed, so the ad-hoc signature must
-# keep the app-sandbox entitlement (and nothing else — the released binary is
-# signed with a development certificate that carries get-task-allow).
-ENTITLEMENTS="$TMP/sandbox.plist"
-cat > "$ENTITLEMENTS" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-</dict>
-</plist>
-PLIST
-
-# Sign the nested extension first, then the containing app.
-$SUDO codesign --force --sign - --entitlements "$ENTITLEMENTS" "$DEST/$APP_NAME/$APPEX_PATH"
-$SUDO codesign --force --sign - --entitlements "$ENTITLEMENTS" "$DEST/$APP_NAME"
-codesign --verify --deep --strict "$DEST/$APP_NAME" || die "проверка подписи не прошла."
+# The re-sign logic ships inside the bundle, so it always matches the
+# installed version.
+$SUDO bash "$DEST/$APP_NAME/Contents/Resources/resign.sh" "$DEST/$APP_NAME" \
+    || die "переподпись не удалась."
 
 info "Запускаю приложение, чтобы Почта увидела расширение…"
 open "$DEST/$APP_NAME"

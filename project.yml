@@ -12,7 +12,11 @@ targets:
   MailFilenameFix:
     type: application
     platform: macOS
-    sources: [App]
+    sources:
+      - App
+      # bundled so every installer runs the same version-matched re-sign logic
+      - path: scripts/resign.sh
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Mail Filename Fix
