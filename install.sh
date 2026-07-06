@@ -17,6 +17,11 @@ DEST="/Applications"
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31mОшибка:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# The whole body lives in main() so that bash parses the entire script before
+# executing anything: when run via `curl | bash`, commands that touch stdin
+# would otherwise consume the not-yet-parsed rest of the script.
+main() {
+
 [[ "$(uname)" == "Darwin" ]] || die "этот скрипт предназначен только для macOS."
 
 TMP=$(mktemp -d)
@@ -64,3 +69,7 @@ cat <<'EOF'
 
 После этого имена вложений вида «utf-8''%D0%93…» будут отображаться правильно.
 EOF
+
+}
+
+main "$@"
