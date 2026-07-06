@@ -7,7 +7,7 @@ cask "mail-filename-fix" do
   desc "Mail.app extension that fixes RFC 2231-encoded attachment filenames"
   homepage "https://github.com/borzov/MailFilenameFix"
 
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Mail Filename Fix.app"
 
