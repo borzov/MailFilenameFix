@@ -28,9 +28,12 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 info "Ищу последнюю версию…"
-DOWNLOAD_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-    | sed -n 's/.*"browser_download_url": *"\([^"]*\.zip\)".*/\1/p' | head -1)
-[[ -n "$DOWNLOAD_URL" ]] || die "не удалось найти свежий выпуск на GitHub. Проверьте соединение."
+# The releases/latest page redirects to .../tag/vX.Y.Z; unlike the GitHub API
+# this is not rate-limited for anonymous clients.
+TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')
+[[ "$TAG" =~ ^v[0-9] ]] || die "не удалось найти свежий выпуск на GitHub. Проверьте соединение."
+DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/MailFilenameFix-${TAG#v}.zip"
 
 info "Скачиваю: $DOWNLOAD_URL"
 curl -fSL --progress-bar -o "$TMP/app.zip" "$DOWNLOAD_URL"
