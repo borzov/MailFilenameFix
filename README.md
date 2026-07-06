@@ -63,8 +63,11 @@ curl -fsSL https://raw.githubusercontent.com/borzov/MailFilenameFix/master/insta
 
 ### Способ 2: Homebrew
 
+Cask лежит прямо в этом репозитории — подключите его как tap по URL:
+
 ```sh
-brew install --cask --no-quarantine borzov/tap/mail-filename-fix
+brew tap borzov/mail https://github.com/borzov/MailFilenameFix
+brew install --cask --no-quarantine borzov/mail/mail-filename-fix
 ```
 
 Обновление: `brew upgrade --cask --no-quarantine mail-filename-fix`.

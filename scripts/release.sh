@@ -6,14 +6,10 @@
 #
 # Usage:
 #   scripts/release.sh 1.2.3
-#
-# Environment:
-#   TAP_DIR — path to the homebrew-tap checkout (default: ~/Develop/homebrew-tap)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TAP_DIR="${TAP_DIR:-$HOME/Develop/homebrew-tap}"
-CASK="$TAP_DIR/Casks/mail-filename-fix.rb"
+CASK="$REPO_ROOT/Casks/mail-filename-fix.rb"
 APP_NAME="Mail Filename Fix.app"
 
 VERSION="${1:-}"
@@ -21,7 +17,6 @@ VERSION="${1:-}"
     echo "Usage: scripts/release.sh <version>  (e.g. 1.2.3)" >&2
     exit 1
 }
-[[ -f "$CASK" ]] || { echo "Cask not found: $CASK (set TAP_DIR)" >&2; exit 1; }
 
 cd "$REPO_ROOT"
 
@@ -57,7 +52,6 @@ cat <<EOF
 Release $VERSION is ready: $ZIP
 
 To publish:
-  git add project.yml && git commit -m "chore: release v$VERSION" && git push origin master
+  git add project.yml Casks && git commit -m "chore: release v$VERSION" && git push origin master
   gh release create v$VERSION "$ZIP" --title "v$VERSION" --notes-file dist/release-notes.md
-  cd "$TAP_DIR" && git add Casks && git commit -m "mail-filename-fix $VERSION" && git push
 EOF
