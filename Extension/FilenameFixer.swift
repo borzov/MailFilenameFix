@@ -1,9 +1,14 @@
 import Foundation
 
-/// Rewrites RFC 2231/5987 extended parameters (filename*=utf-8''%D0%93...,
-/// including filename*0*/filename*1* continuations) in Content-Disposition
-/// and Content-Type headers into the RFC 2047 encoded-word form that
-/// Mail.app renders correctly (filename="=?utf-8?B?...?=").
+/// Fixes attachment names in Content-Disposition and Content-Type headers,
+/// rewriting them into the RFC 2047 encoded-word form Mail.app renders
+/// correctly (filename="=?utf-8?B?...?="). Two defects are handled:
+///
+///  - RFC 2231/5987 extended parameters (filename*=utf-8''%D0%93..., including
+///    filename*0*/filename*1* continuations), which Mail shows verbatim;
+///  - mojibake ("Ð¸Ð·Ð¾Ð±ÑÐ°Ð¶ÐµÐ½Ð¸Ðµ.png"), whether the header carries raw
+///    UTF-8 bytes, an encoded-word around already-broken text, or a charset
+///    that lies about its contents. See MojibakeRepair.
 ///
 /// The transformation is byte-surgical: only affected header lines change,
 /// the rest of the message is preserved byte-for-byte.
@@ -13,11 +18,6 @@ enum FilenameFixer {
     private static let headerRegex = try! NSRegularExpression(
         pattern: "^(Content-(?:Disposition|Type)[ \\t]*:)((?:[^\\r\\n]*)(?:\\r?\\n[ \\t][^\\r\\n]*)*)",
         options: [.caseInsensitive, .anchorsMatchLines]
-    )
-    /// Extended parameter marker: filename*=, filename*0*=, name*=
-    private static let extParamRegex = try! NSRegularExpression(
-        pattern: "(?:file)?name\\*(?:\\d+\\*?)?[ \\t]*=",
-        options: [.caseInsensitive]
     )
     /// A single parameter key: filename, filename*, filename*0, filename*1*, name...
     private static let keyRegex = try! NSRegularExpression(
@@ -29,8 +29,12 @@ enum FilenameFixer {
     static func fix(_ data: Data) -> Data? {
         // lossless byte <-> character mapping
         guard let text = String(data: data, encoding: .isoLatin1) else { return nil }
-        // cheap pre-check before running the header regex
-        guard text.range(of: "name*", options: .caseInsensitive) != nil else { return nil }
+        // cheap pre-check before running the header regex: a name can only be
+        // broken as an extended parameter, inside an encoded-word, or as
+        // 8-bit bytes sitting raw in the header
+        guard text.range(of: "name*", options: .caseInsensitive) != nil
+                || text.range(of: "=?") != nil
+                || text.unicodeScalars.contains(where: { $0.value > 0x7F }) else { return nil }
         // never touch cryptographically signed mail
         let head = String(text.prefix(8192))
         if head.range(of: "multipart/signed", options: .caseInsensitive) != nil { return nil }
@@ -43,9 +47,7 @@ enum FilenameFixer {
         for m in matches {
             let name = ns.substring(with: m.range(at: 1))
             let value = ns.substring(with: m.range(at: 2))
-            guard extParamRegex.firstMatch(
-                in: value, range: NSRange(location: 0, length: (value as NSString).length)
-            ) != nil, let rebuilt = rebuildHeaderValue(name: name, value: value) else { continue }
+            guard let rebuilt = rebuildHeaderValue(name: name, value: value) else { continue }
             result += ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
             result += name + " " + rebuilt
             cursor = m.range.location + m.range.length
@@ -113,26 +115,10 @@ enum FilenameFixer {
         return out
     }
 
-    private static func stringEncoding(for charset: String) -> String.Encoding {
-        switch charset.lowercased() {
-        case "utf-8", "utf8", "": return .utf8
-        case "windows-1251", "cp1251": return .windowsCP1251
-        case "koi8-r":
-            let cf = CFStringConvertEncodingToNSStringEncoding(
-                CFStringEncoding(CFStringEncodings.KOI8_R.rawValue))
-            return String.Encoding(rawValue: cf)
-        case "iso-8859-1", "latin-1", "latin1": return .isoLatin1
-        default:
-            let cf = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
-            if cf != kCFStringEncodingInvalidId {
-                return String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cf))
-            }
-            return .utf8
-        }
-    }
-
-    private static func encodedWord(_ name: String) -> String {
-        "=?utf-8?B?" + Data(name.utf8).base64EncodedString() + "?="
+    /// Decodes a plain filename parameter and repairs it if it is mojibake.
+    /// Returns nil when the name is already displayed correctly by Mail.
+    private static func repairedName(_ raw: String) -> String? {
+        MojibakeRepair.repair(EncodedWord.decode(raw) ?? raw)
     }
 
     private static func quoted(_ s: String) -> String {
@@ -152,6 +138,7 @@ enum FilenameFixer {
         struct Segment { let index: Int; let extended: Bool; let raw: String }
         var segments: [String: [Segment]] = [:]
         var charsets: [String: String] = [:]
+        var plain: [Param] = []
         var others: [Param] = []
         var order: [String] = []
 
@@ -187,17 +174,28 @@ enum FilenameFixer {
                 if segments[base] == nil { order.append(base) }
                 segments[base, default: []].append(
                     Segment(index: index, extended: extended, raw: payload))
+            } else if keyMatch != nil {
+                // plain filename=/name= — may still carry a broken name
+                plain.append(Param(key: lower, value: unquote(rawValue)))
             } else {
                 others.append(Param(key: rawKey, value: unquote(rawValue)))
             }
         }
-        guard !segments.isEmpty else { return nil }
+        guard !segments.isEmpty || !plain.isEmpty else { return nil }
 
         var rebuilt: [String] = [mainValue]
         for p in others {
             rebuilt.append(p.value.isEmpty ? p.key : "\(p.key)=\(quoted(p.value))")
         }
         var converted = false
+        for p in plain {
+            guard let repaired = repairedName(p.value) else {
+                rebuilt.append("\(p.key)=\(quoted(p.value))")
+                continue
+            }
+            rebuilt.append("\(p.key)=\(quoted(EncodedWord.encode(repaired)))")
+            converted = true
+        }
         for base in order {
             guard let segs = segments[base]?.sorted(by: { $0.index < $1.index }) else { continue }
             var bytes = Data()
@@ -208,14 +206,16 @@ enum FilenameFixer {
                     bytes.append(seg.raw.data(using: .isoLatin1) ?? Data())
                 }
             }
-            let encoding = stringEncoding(for: charsets[base] ?? "utf-8")
+            let encoding = EncodedWord.encoding(for: charsets[base] ?? "utf-8")
             guard var decoded = String(data: bytes, encoding: encoding)
                     ?? String(data: bytes, encoding: .isoLatin1) else { continue }
+            // the charset may have lied — bytes declared latin-1 are often UTF-8
+            if let repaired = MojibakeRepair.repair(decoded) { decoded = repaired }
             decoded = decoded.replacingOccurrences(of: "/", with: ":")
                 .trimmingCharacters(in: .whitespaces)
             guard !decoded.isEmpty else { continue }
             let paramValue = decoded.allSatisfy { $0.isASCII }
-                ? quoted(decoded) : quoted(encodedWord(decoded))
+                ? quoted(decoded) : quoted(EncodedWord.encode(decoded))
             rebuilt.append("\(base)=\(paramValue)")
             converted = true
         }

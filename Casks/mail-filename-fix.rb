@@ -1,10 +1,10 @@
 cask "mail-filename-fix" do
-  version "1.0.0"
-  sha256 "32ca1137ae58e14c3c34fac8f014568120ec743c03979652a400cca9e9fab5df"
+  version "1.1.0"
+  sha256 "b8b6b92e25536a1ac9e6fd283e90bd7147bc7b62900a7d7f36a065ea554a82fb"
 
   url "https://github.com/borzov/MailFilenameFix/releases/download/v#{version}/MailFilenameFix-#{version}.zip"
   name "Mail Filename Fix"
-  desc "Mail.app extension that fixes RFC 2231-encoded attachment filenames"
+  desc "Mail.app extension that fixes broken attachment filenames"
   homepage "https://github.com/borzov/MailFilenameFix"
 
   depends_on macos: :ventura

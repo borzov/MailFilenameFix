@@ -24,7 +24,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Mail Filename Fix
-        CFBundleShortVersionString: 1.0.0
+        CFBundleShortVersionString: 1.1.0
         CFBundleIconFile: AppIcon
         LSApplicationCategoryType: public.app-category.utilities
         LSUIElement: true
@@ -47,7 +47,7 @@ targets:
       path: Extension/Info.plist
       properties:
         CFBundleDisplayName: Filename Fix
-        CFBundleShortVersionString: 1.0.0
+        CFBundleShortVersionString: 1.1.0
         NSExtension:
           NSExtensionPointIdentifier: com.apple.email.extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MailExtension
