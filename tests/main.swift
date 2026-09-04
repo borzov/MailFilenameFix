@@ -150,5 +150,23 @@ if let out = FilenameFixer.fix(rawBytes), let s = String(data: out, encoding: .i
     check("raw: From header intact", s.contains("From: a@b\r\n"))
 } else { check("raw: body check ran", false) }
 
+// 15. several encoded-words folded inside one quoted parameter (Yandex web
+// mail). Each word is valid on its own, but Mail cannot join them and shows
+// garbage after the first fragment; the fix is a single encoded-word.
+let splitName = "Рекомендации_по_заполнению_формы_1.pdf"
+let splitWords = msg(
+    "Content-Disposition: attachment;\r\n" +
+    "    filename=\"=?UTF-8?B?0KDQtdC60L7QvNC10L3QtNCw0YbQuNC4X9C/0L5f0LfQsNC/0L7Qu9C90LXQvdC40Y5f0YTQvtGA0Lw=?=\r\n" +
+    "    =?UTF-8?B?0YtfMS5wZGY=?=\"\r\n" +
+    "Content-Transfer-Encoding: base64\r\n" +
+    "Content-Type: application/pdf;\r\n" +
+    "    name=\"=?UTF-8?B?0KDQtdC60L7QvNC10L3QtNCw0YbQuNC4X9C/0L5f0LfQsNC/0L7Qu9C90LXQvdC40Y5f0YTQvtGA0Lw=?=\r\n" +
+    "    =?UTF-8?B?0YtfMS5wZGY=?=\"\r\n")
+if let out = FilenameFixer.fix(splitWords), let s = String(data: out, encoding: .isoLatin1) {
+    check("split words: filename joined", s.contains("filename=\"=?utf-8?B?\(b64(splitName))?=\""))
+    check("split words: name joined", s.contains("name=\"=?utf-8?B?\(b64(splitName))?=\""))
+    check("split words: idempotent", FilenameFixer.fix(out) == nil)
+} else { check("split words: changed", false) }
+
 print(failures == 0 ? "\nALL TESTS PASSED" : "\n\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

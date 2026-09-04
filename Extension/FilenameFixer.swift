@@ -8,7 +8,9 @@ import Foundation
 ///    filename*0*/filename*1* continuations), which Mail shows verbatim;
 ///  - mojibake ("Ð¸Ð·Ð¾Ð±ÑÐ°Ð¶ÐµÐ½Ð¸Ðµ.png"), whether the header carries raw
 ///    UTF-8 bytes, an encoded-word around already-broken text, or a charset
-///    that lies about its contents. See MojibakeRepair.
+///    that lies about its contents. See MojibakeRepair;
+///  - a name split across several encoded-words inside one quoted parameter
+///    (filename="=?utf-8?B?..?= =?utf-8?B?..?="), which Mail cannot join.
 ///
 /// The transformation is byte-surgical: only affected header lines change,
 /// the rest of the message is preserved byte-for-byte.
@@ -115,10 +117,14 @@ enum FilenameFixer {
         return out
     }
 
-    /// Decodes a plain filename parameter and repairs it if it is mojibake.
+    /// Decodes a plain filename parameter and repairs it if it is mojibake
+    /// or split across several encoded-words, which Mail cannot join.
     /// Returns nil when the name is already displayed correctly by Mail.
     private static func repairedName(_ raw: String) -> String? {
-        MojibakeRepair.repair(EncodedWord.decode(raw) ?? raw)
+        let decoded = EncodedWord.decode(raw)
+        if let repaired = MojibakeRepair.repair(decoded ?? raw) { return repaired }
+        if let decoded, EncodedWord.wordCount(raw) > 1 { return decoded }
+        return nil
     }
 
     private static func quoted(_ s: String) -> String {

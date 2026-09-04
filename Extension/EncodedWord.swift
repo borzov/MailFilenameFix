@@ -9,6 +9,12 @@ enum EncodedWord {
         options: []
     )
 
+    /// Number of encoded-words in `s`. Mail.app renders exactly one per
+    /// parameter; a name split across several shows garbage after the first.
+    static func wordCount(_ s: String) -> Int {
+        wordRegex.numberOfMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length))
+    }
+
     /// Decodes every encoded-word in `s`. Returns nil when there is none, so
     /// callers can tell "nothing to decode" from "decoded to the same text".
     static func decode(_ s: String) -> String? {
