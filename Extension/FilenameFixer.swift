@@ -2,10 +2,14 @@ import Foundation
 
 /// Fixes attachment names in Content-Disposition and Content-Type headers,
 /// rewriting them into the RFC 2047 encoded-word form Mail.app renders
-/// correctly (filename="=?utf-8?B?...?="). Two defects are handled:
+/// correctly (filename="=?utf-8?B?...?="). Handled defects:
 ///
 ///  - RFC 2231/5987 extended parameters (filename*=utf-8''%D0%93..., including
-///    filename*0*/filename*1* continuations), which Mail shows verbatim;
+///    filename*0*/filename*1* continuations), which Mail shows verbatim.
+///    When a plain filename/name sits beside the extended form, Mail shows
+///    that fallback ("????.pdf", a transliteration) and ignores filename*.
+///    RFC 6266 prefers the extended parameter, so a strict decode replaces
+///    the plain one. A broken extended value never overrides a plain one;
 ///  - mojibake ("Ð¸Ð·Ð¾Ð±ÑÐ°Ð¶ÐµÐ½Ð¸Ðµ.png"), whether the header carries raw
 ///    UTF-8 bytes, an encoded-word around already-broken text, or a charset
 ///    that lies about its contents. See MojibakeRepair;
@@ -67,6 +71,12 @@ enum FilenameFixer {
         let value: String
     }
 
+    private struct Segment {
+        let index: Int
+        let extended: Bool
+        let raw: String
+    }
+
     /// Splits a header value on ';' honoring quoted strings.
     private static func splitParams(_ value: String) -> [String] {
         var parts: [String] = []
@@ -117,6 +127,70 @@ enum FilenameFixer {
         return out
     }
 
+    /// Like percentDecode, but a stray "%" or a non-hex pair is malformed.
+    /// Used only when deciding whether filename* may replace filename.
+    private static func strictPercentDecode(_ s: String) -> Data? {
+        var out = Data()
+        var iter = s.makeIterator()
+        while let ch = iter.next() {
+            if ch == "%" {
+                guard let h1 = iter.next(), let h2 = iter.next(),
+                      let byte = UInt8(String([h1, h2]), radix: 16) else { return nil }
+                out.append(byte)
+            } else {
+                guard let bytes = String(ch).data(using: .isoLatin1) else { return nil }
+                out.append(bytes)
+            }
+        }
+        return out
+    }
+
+    private static func isPlausibleName(_ s: String) -> Bool {
+        for scalar in s.unicodeScalars {
+            if scalar.value < 0x20 || scalar.value == 0x7F { return false }
+        }
+        return true
+    }
+
+    /// Decodes RFC 2231 segments. `strict` refuses a Latin-1 fallback and a
+    /// malformed percent-escape, so a broken filename* cannot replace a
+    /// usable plain filename. The lenient path is only for an extended
+    /// parameter that has no plain sibling.
+    private static func decodeExtended(segs: [Segment], charset: String?,
+                                       strict: Bool) -> String? {
+        var bytes = Data()
+        for seg in segs.sorted(by: { $0.index < $1.index }) {
+            if seg.extended {
+                if strict {
+                    guard let part = strictPercentDecode(seg.raw) else { return nil }
+                    bytes.append(part)
+                } else {
+                    bytes.append(percentDecode(seg.raw))
+                }
+            } else if let part = seg.raw.data(using: .isoLatin1) {
+                bytes.append(part)
+            } else {
+                return nil
+            }
+        }
+        let encoding = EncodedWord.encoding(for: charset ?? "utf-8")
+        let decoded = String(data: bytes, encoding: encoding)
+            ?? (strict ? nil : String(data: bytes, encoding: .isoLatin1))
+        guard var text = decoded else { return nil }
+        if let repaired = MojibakeRepair.repair(text) { text = repaired }
+        text = text.replacingOccurrences(of: "/", with: ":")
+            .trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        if strict && !isPlausibleName(text) { return nil }
+        return text
+    }
+
+    private static func emitName(_ base: String, _ decoded: String) -> String {
+        let paramValue = decoded.allSatisfy { $0.isASCII }
+            ? quoted(decoded) : quoted(EncodedWord.encode(decoded))
+        return "\(base)=\(paramValue)"
+    }
+
     /// Decodes a plain filename parameter and repairs it if it is mojibake
     /// or split across several encoded-words, which Mail cannot join.
     /// Returns nil when the name is already displayed correctly by Mail.
@@ -141,7 +215,6 @@ enum FilenameFixer {
         let mainValue = rawParts[0].trimmingCharacters(in: .whitespaces)
 
         // segments of extended names, keyed by base param name
-        struct Segment { let index: Int; let extended: Bool; let raw: String }
         var segments: [String: [Segment]] = [:]
         var charsets: [String: String] = [:]
         var plain: [Param] = []
@@ -193,8 +266,23 @@ enum FilenameFixer {
         for p in others {
             rebuilt.append(p.value.isEmpty ? p.key : "\(p.key)=\(quoted(p.value))")
         }
+        // filename* replaces filename only when it decodes strictly. Otherwise
+        // a broken extended value would destroy the plain name Mail can show.
+        let plainKeys = Set(plain.map(\.key))
+        var decodedExtended: [String: String] = [:]
+        for base in order {
+            guard let segs = segments[base] else { continue }
+            if let text = decodeExtended(segs: segs, charset: charsets[base], strict: true) {
+                decodedExtended[base] = text
+            } else if !plainKeys.contains(base),
+                      let text = decodeExtended(segs: segs, charset: charsets[base], strict: false) {
+                decodedExtended[base] = text
+            }
+        }
+
         var converted = false
         for p in plain {
+            if decodedExtended[p.key] != nil { continue }
             guard let repaired = repairedName(p.value) else {
                 rebuilt.append("\(p.key)=\(quoted(p.value))")
                 continue
@@ -203,26 +291,8 @@ enum FilenameFixer {
             converted = true
         }
         for base in order {
-            guard let segs = segments[base]?.sorted(by: { $0.index < $1.index }) else { continue }
-            var bytes = Data()
-            for seg in segs {
-                if seg.extended {
-                    bytes.append(percentDecode(seg.raw))
-                } else {
-                    bytes.append(seg.raw.data(using: .isoLatin1) ?? Data())
-                }
-            }
-            let encoding = EncodedWord.encoding(for: charsets[base] ?? "utf-8")
-            guard var decoded = String(data: bytes, encoding: encoding)
-                    ?? String(data: bytes, encoding: .isoLatin1) else { continue }
-            // the charset may have lied — bytes declared latin-1 are often UTF-8
-            if let repaired = MojibakeRepair.repair(decoded) { decoded = repaired }
-            decoded = decoded.replacingOccurrences(of: "/", with: ":")
-                .trimmingCharacters(in: .whitespaces)
-            guard !decoded.isEmpty else { continue }
-            let paramValue = decoded.allSatisfy { $0.isASCII }
-                ? quoted(decoded) : quoted(EncodedWord.encode(decoded))
-            rebuilt.append("\(base)=\(paramValue)")
+            guard let decoded = decodedExtended[base] else { continue }
+            rebuilt.append(emitName(base, decoded))
             converted = true
         }
         guard converted else { return nil }
