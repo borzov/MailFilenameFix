@@ -1,6 +1,6 @@
 cask "mail-filename-fix" do
-  version "1.1.0"
-  sha256 "b8b6b92e25536a1ac9e6fd283e90bd7147bc7b62900a7d7f36a065ea554a82fb"
+  version "1.1.1"
+  sha256 "d96e7a25ad2eedf3027a0652ef390f52781446ea4821d1f2dc3220c923388e52"
 
   url "https://github.com/borzov/MailFilenameFix/releases/download/v#{version}/MailFilenameFix-#{version}.zip"
   name "Mail Filename Fix"
